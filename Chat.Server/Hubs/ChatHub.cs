@@ -4,70 +4,92 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Supabase;
 
 namespace Chat.Server.Hubs
 {
     public class ChatHub : Hub
     {
         private static ConcurrentDictionary<string, UserInfo> _connectedUsers = new();
-        private static List<Message> _messageHistory = new();
-        private static List<Reaction> _reactions = new();
+        private static Dictionary<string, int> _userIdMap = new(); // username -> user_id mapping
+        private readonly Supabase.Client _supabase;
+
+        public ChatHub(Supabase.Client supabase)
+        {
+            _supabase = supabase;
+        }
 
         public async Task SendMessage(string user, string message)
         {
-            var chatMessage = new Message
+            try
             {
-                User = user,
-                Content = message,
-                Timestamp = DateTime.Now,
-                Is_System = false,
-                Is_Private = false
-            };
+                var userId = await GetOrCreateUserId(user);
+                
+                var chatMessage = new Message
+                {
+                    Sender_Id = userId,
+                    Content = message,
+                    Timestamp = DateTime.Now,
+                    Is_Private = false
+                };
 
-            // Store in memory (for simplicity - production should use DB)
-            _messageHistory.Add(chatMessage);
+                var result = await _supabase.From<Message>().Insert(chatMessage);
+                var insertedMessage = result.Models.First();
+                
+                insertedMessage.User = user;
+                insertedMessage.Is_System = false;
 
-            // Keep only last 100 messages
-            if (_messageHistory.Count > 100)
-                _messageHistory.RemoveAt(0);
-
-            await Clients.All.SendAsync("ReceiveMessage", chatMessage);
+                await Clients.All.SendAsync("ReceiveMessage", insertedMessage);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error sending message: {ex.Message}");
+            }
         }
 
         public async Task ReactToMessage(int messageId, string username, string reactionType)
         {
-            // Simple toggle logic
-            var existingReaction = _reactions
-                .FirstOrDefault(r => r.Message_Id == messageId &&
-                                   r.Username == username &&
-                                   r.Reaction_Type == reactionType);
+            try
+            {
+                var userId = await GetOrCreateUserId(username);
+                
+                var existingReactions = await _supabase.From<Reaction>()
+                    .Where(r => r.Message_Id == messageId && r.User_Id == userId && r.Reaction_Type == reactionType)
+                    .Get();
 
-            if (existingReaction != null)
-            {
-                // Remove reaction
-                _reactions.Remove(existingReaction);
-            }
-            else
-            {
-                // Add new reaction
-                var reaction = new Reaction
+                if (existingReactions.Models.Any())
                 {
-                    Message_Id = messageId,
-                    Username = username,
-                    Reaction_Type = reactionType,
-                    Created_At = DateTime.Now
-                };
-                _reactions.Add(reaction);
+                    await _supabase.From<Reaction>()
+                        .Where(r => r.Message_Id == messageId && r.User_Id == userId && r.Reaction_Type == reactionType)
+                        .Delete();
+                }
+                else
+                {
+                    var reaction = new Reaction
+                    {
+                        Message_Id = messageId,
+                        User_Id = userId,
+                        Reaction_Type = reactionType,
+                        Created_At = DateTime.Now
+                    };
+                    
+                    await _supabase.From<Reaction>().Insert(reaction);
+                }
+
+                var allReactions = await _supabase.From<Reaction>()
+                    .Where(r => r.Message_Id == messageId)
+                    .Get();
+                    
+                var reactionCounts = allReactions.Models
+                    .GroupBy(r => r.Reaction_Type)
+                    .ToDictionary(g => g.Key, g => g.Count());
+
+                await Clients.All.SendAsync("MessageReactionsUpdated", messageId, reactionCounts);
             }
-
-            // Get reaction counts for this message
-            var reactionCounts = _reactions
-                .Where(r => r.Message_Id == messageId)
-                .GroupBy(r => r.Reaction_Type)
-                .ToDictionary(g => g.Key, g => g.Count());
-
-            // Broadcast updated reactions
-            await Clients.All.SendAsync("MessageReactionsUpdated", messageId, reactionCounts);
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error reacting to message: {ex.Message}");
+            }
         }
 
         public override async Task OnConnectedAsync()
@@ -79,16 +101,6 @@ namespace Chat.Server.Hubs
         {
             if (_connectedUsers.TryRemove(Context.ConnectionId, out var userInfo))
             {
-                var systemMessage = new Message
-                {
-                    User = "System",
-                    Content = $"{userInfo.Username} left the chat",
-                    Timestamp = DateTime.Now,
-                    Is_System = true,
-                    Is_Private = false
-                };
-
-                await Clients.All.SendAsync("ReceiveMessage", systemMessage);
                 await UpdateUserList();
             }
 
@@ -97,51 +109,96 @@ namespace Chat.Server.Hubs
 
         public async Task JoinChat(string username)
         {
-            // Check if username already exists
-            if (_connectedUsers.Any(x => x.Value.Username.Equals(username, StringComparison.OrdinalIgnoreCase)))
+            try
             {
-                await Clients.Caller.SendAsync("ErrorMessage", "Username already taken!");
-                return;
+                if (_connectedUsers.Any(x => x.Value.Username.Equals(username, StringComparison.OrdinalIgnoreCase)))
+                {
+                    await Clients.Caller.SendAsync("ErrorMessage", "Username already taken!");
+                    return;
+                }
+
+                var userInfo = new UserInfo
+                {
+                    ConnectionId = Context.ConnectionId,
+                    Username = username,
+                    ConnectedAt = DateTime.Now
+                };
+
+                _connectedUsers[Context.ConnectionId] = userInfo;
+
+                var messages = await _supabase.From<Message>()
+                    .Order("timestamp", Supabase.Postgrest.Constants.Ordering.Descending)
+                    .Limit(50)
+                    .Get();
+
+                var messageList = messages.Models.ToList();
+                messageList.Reverse();
+                
+                foreach (var msg in messageList)
+                {
+                    var sender = await _supabase.From<User>()
+                        .Where(u => u.Id == msg.Sender_Id)
+                        .Single();
+                        
+                    msg.User = sender?.Username ?? "Unknown";
+                    msg.Is_System = false;
+                    
+                    await Clients.Caller.SendAsync("ReceiveMessage", msg);
+                }
+
+                var allReactions = await _supabase.From<Reaction>().Get();
+                var reactionCounts = allReactions.Models
+                    .GroupBy(r => r.Message_Id)
+                    .ToDictionary(
+                        g => g.Key,
+                        g => g.GroupBy(x => x.Reaction_Type)
+                              .ToDictionary(x => x.Key, x => x.Count())
+                    );
+
+                await Clients.Caller.SendAsync("LoadAllReactions", reactionCounts);
+                await UpdateUserList();
             }
-
-            var userInfo = new UserInfo
+            catch (Exception ex)
             {
-                ConnectionId = Context.ConnectionId,
-                Username = username,
-                ConnectedAt = DateTime.Now
-            };
-
-            _connectedUsers[Context.ConnectionId] = userInfo;
-
-            // Send recent message history
-            foreach (var msg in _messageHistory)
-            {
-                await Clients.Caller.SendAsync("ReceiveMessage", msg);
+                Console.WriteLine($"Error joining chat: {ex.Message}");
             }
+        }
 
-            // Send current reactions for all messages
-            var allReactionCounts = _reactions
-                .GroupBy(r => r.Message_Id)
-                .ToDictionary(
-                    g => g.Key,
-                    g => g.GroupBy(x => x.Reaction_Type)
-                          .ToDictionary(x => x.Key, x => x.Count())
-                );
-
-            await Clients.Caller.SendAsync("LoadAllReactions", allReactionCounts);
-
-            // Notify everyone about new user
-            var systemMessage = new Message
+        private async Task<int> GetOrCreateUserId(string username)
+        {
+            try
             {
-                User = "System",
-                Content = $"{username} joined the chat",
-                Timestamp = DateTime.Now,
-                Is_System = true,
-                Is_Private = false
-            };
-
-            await Clients.All.SendAsync("ReceiveMessage", systemMessage);
-            await UpdateUserList();
+                if (_userIdMap.ContainsKey(username))
+                    return _userIdMap[username];
+                    
+                var existingUser = await _supabase.From<User>()
+                    .Where(u => u.Username == username)
+                    .Single();
+                    
+                if (existingUser != null)
+                {
+                    _userIdMap[username] = existingUser.Id;
+                    return existingUser.Id;
+                }
+                
+                var newUser = new User
+                {
+                    Username = username,
+                    Created_At = DateTime.Now,
+                    Is_Online = true
+                };
+                
+                var result = await _supabase.From<User>().Insert(newUser);
+                var insertedUser = result.Models.First();
+                
+                _userIdMap[username] = insertedUser.Id;
+                return insertedUser.Id;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting/creating user: {ex.Message}");
+                return 1; // fallback
+            }
         }
 
         private async Task UpdateUserList()

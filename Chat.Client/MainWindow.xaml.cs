@@ -1,6 +1,6 @@
 ﻿using Chat.Client.Services;
-using Newtonsoft.Json.Linq;
 using System;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -20,6 +20,7 @@ namespace Chat.Client
             chatService.OnUserListUpdated += UpdateUserList;
             chatService.OnError += ShowError;
             chatService.OnReactionsUpdated += UpdateMessageReactions;
+            chatService.OnLoadAllReactions += LoadAllReactions;
         }
 
         private async void ConnectButton_Click(object sender, RoutedEventArgs e)
@@ -61,37 +62,60 @@ namespace Chat.Client
             MessageInput.CaretIndex = MessageInput.Text.Length;
         }
 
-        private void DisplayMessage(object messageObj)
+        private void DisplayMessage(JsonElement messageElement)
         {
             Dispatcher.Invoke(() =>
             {
                 try
                 {
-                    // Parse JObject to extract properties
-                    if (messageObj is JObject jObject)
-                    {
-                        string user = jObject["user"]?.ToString() ?? "Unknown";
-                        string content = jObject["content"]?.ToString() ?? "";
-                        string timestampStr = jObject["timestamp"]?.ToString() ?? DateTime.Now.ToString();
-                        bool isSystem = bool.TryParse(jObject["is_System"]?.ToString(), out var sys) ? sys : false;
 
-                        if (DateTime.TryParse(timestampStr, out DateTime timestamp))
+                    // Parse JsonElement
+                    int id = 0;
+                    if (messageElement.TryGetProperty("id", out var idElement))
+                    {
+                        id = idElement.GetInt32();
+                    }
+
+                    string user = "Unknown";
+                    if (messageElement.TryGetProperty("user", out var userElement))
+                    {
+                        user = userElement.GetString();
+                    }
+
+                    string content = "";
+                    if (messageElement.TryGetProperty("content", out var contentElement))
+                    {
+                        content = contentElement.GetString();
+                    }
+
+                    DateTime timestamp = DateTime.Now;
+
+                    string timestampStr = DateTime.Now.ToString();
+                    if (messageElement.TryGetProperty("timestamp", out var timestampElement))
+                    {
+                        timestampStr = timestampElement.GetString();
+                        if (!string.IsNullOrEmpty(timestampStr))
                         {
-                            AddChatMessage(_messageCounter++, user, content, timestamp, isSystem);
-                        }
-                        else
-                        {
-                            AddChatMessage(_messageCounter++, user, content, DateTime.Now, isSystem);
+                            DateTime.TryParse(timestampStr, out timestamp);
                         }
                     }
+
+                    bool isSystem = false;
+                    if (messageElement.TryGetProperty("is_System", out var isSystemElement))
+                    {
+                        isSystem = isSystemElement.GetBoolean();
+                    }
+
+
+                    AddChatMessage(id, user, content, timestamp, isSystem);
                 }
                 catch (Exception ex)
                 {
-                    // Handle parsing errors gracefully
-                    Console.WriteLine($"Error parsing message: {ex.Message}");
+                    MessageBox.Show($"Error parsing message: {ex.Message}");
                 }
             });
         }
+
 
         private void AddChatMessage(int messageId, string user, string content, DateTime timestamp, bool isSystem = false)
         {
@@ -265,6 +289,17 @@ namespace Chat.Client
             ChatPanel.Visibility = Visibility.Collapsed;
             ChatDisplayPanel.Children.Clear();
             UserList.ItemsSource = null;
+        }
+
+        private void LoadAllReactions(Dictionary<int, Dictionary<string, int>> allReactions)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                foreach (var messageReactions in allReactions)
+                {
+                    UpdateMessageReactions(messageReactions.Key, messageReactions.Value);
+                }
+            });
         }
 
         protected override async void OnClosed(EventArgs e)

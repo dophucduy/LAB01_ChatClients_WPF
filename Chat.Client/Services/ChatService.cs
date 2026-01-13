@@ -8,7 +8,7 @@ namespace Chat.Client.Services
 {
     public class ChatService
     {
-        public event Action<dynamic> OnMessageReceived;
+        public event Action<JsonElement> OnMessageReceived;
         public event Action<List<string>> OnUserListUpdated;
         public event Action<string> OnError;
         public event Action<int, Dictionary<string, int>> OnReactionsUpdated;
