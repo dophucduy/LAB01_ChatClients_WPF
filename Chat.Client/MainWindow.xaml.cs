@@ -90,13 +90,12 @@ namespace Chat.Client
 
                     DateTime timestamp = DateTime.Now;
 
-                    string timestampStr = DateTime.Now.ToString();
                     if (messageElement.TryGetProperty("timestamp", out var timestampElement))
                     {
-                        timestampStr = timestampElement.GetString();
-                        if (!string.IsNullOrEmpty(timestampStr))
+                        string timestampStr = timestampElement.GetString();
+                        if (!string.IsNullOrEmpty(timestampStr) && DateTime.TryParse(timestampStr, out var parsedTime))
                         {
-                            DateTime.TryParse(timestampStr, out timestamp);
+                            timestamp = parsedTime.ToLocalTime();
                         }
                     }
 
