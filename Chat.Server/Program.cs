@@ -3,7 +3,10 @@ using Supabase;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSignalR();
+builder.Services.AddSignalR().AddJsonProtocol(options =>
+{
+    options.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+});
 
 // Add Supabase
 var supabaseUrl = "https://urdnxbibssomkutsebpa.supabase.co";

@@ -6,7 +6,7 @@ namespace Chat.Server.Models
     [Table("reactions")]
     public class Reaction : BaseModel
     {
-        [PrimaryKey("id")]
+        [PrimaryKey("id", false)]
         public int Id { get; set; }
         
         [Column("message_id")]
@@ -20,8 +20,5 @@ namespace Chat.Server.Models
         
         [Column("created_at")]
         public DateTime Created_At { get; set; }
-        
-        // For display purposes only - not stored in DB
-        public string Username { get; set; }
     }
 }

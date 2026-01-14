@@ -36,10 +36,16 @@ namespace Chat.Server.Hubs
                 var result = await _supabase.From<Message>().Insert(chatMessage);
                 var insertedMessage = result.Models.First();
                 
-                insertedMessage.User = user;
-                insertedMessage.Is_System = false;
+                var messageDto = new MessageDto
+                {
+                    Id = insertedMessage.Id,
+                    User = user,
+                    Content = insertedMessage.Content,
+                    Timestamp = insertedMessage.Timestamp,
+                    Is_System = false
+                };
 
-                await Clients.All.SendAsync("ReceiveMessage", insertedMessage);
+                await Clients.All.SendAsync("ReceiveMessage", messageDto);
             }
             catch (Exception ex)
             {
@@ -54,14 +60,15 @@ namespace Chat.Server.Hubs
                 var userId = await GetOrCreateUserId(username);
                 
                 var existingReactions = await _supabase.From<Reaction>()
-                    .Where(r => r.Message_Id == messageId && r.User_Id == userId && r.Reaction_Type == reactionType)
+                    .Where(r => r.Message_Id == messageId)
+                    .Where(r => r.User_Id == userId)
+                    .Where(r => r.Reaction_Type == reactionType)
                     .Get();
 
                 if (existingReactions.Models.Any())
                 {
-                    await _supabase.From<Reaction>()
-                        .Where(r => r.Message_Id == messageId && r.User_Id == userId && r.Reaction_Type == reactionType)
-                        .Delete();
+                    var reactionToDelete = existingReactions.Models.First();
+                    await _supabase.From<Reaction>().Delete(reactionToDelete);
                 }
                 else
                 {
@@ -127,6 +134,7 @@ namespace Chat.Server.Hubs
                 _connectedUsers[Context.ConnectionId] = userInfo;
 
                 var messages = await _supabase.From<Message>()
+                    .Where(m => m.Sender_Id != null)
                     .Order("timestamp", Supabase.Postgrest.Constants.Ordering.Descending)
                     .Limit(50)
                     .Get();
@@ -139,11 +147,17 @@ namespace Chat.Server.Hubs
                     var sender = await _supabase.From<User>()
                         .Where(u => u.Id == msg.Sender_Id)
                         .Single();
-                        
-                    msg.User = sender?.Username ?? "Unknown";
-                    msg.Is_System = false;
                     
-                    await Clients.Caller.SendAsync("ReceiveMessage", msg);
+                    var messageDto = new MessageDto
+                    {
+                        Id = msg.Id,
+                        User = sender?.Username ?? "Unknown",
+                        Content = msg.Content,
+                        Timestamp = msg.Timestamp,
+                        Is_System = false
+                    };
+                    
+                    await Clients.Caller.SendAsync("ReceiveMessage", messageDto);
                 }
 
                 var allReactions = await _supabase.From<Reaction>().Get();

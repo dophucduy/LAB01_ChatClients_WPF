@@ -1,12 +1,13 @@
 ﻿using Supabase.Postgrest.Attributes;
 using Supabase.Postgrest.Models;
+using Newtonsoft.Json;
 
 namespace Chat.Server.Models
 {
     [Table("messages")]
     public class Message : BaseModel
     {
-        [PrimaryKey("id")]
+        [PrimaryKey("id", false)]
         public int Id { get; set; }
         
         [Column("sender_id")]
@@ -23,9 +24,5 @@ namespace Chat.Server.Models
         
         [Column("receiver_id")]
         public int? Receiver_Id { get; set; }
-        
-        // For display purposes only - not stored in DB
-        public string User { get; set; }
-        public bool Is_System { get; set; }
     }
 }
