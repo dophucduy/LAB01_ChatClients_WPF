@@ -160,14 +160,47 @@ namespace Chat.Server.Hubs
             await base.OnDisconnectedAsync(exception);
         }
 
-        public async Task JoinChat(string username)
+        public async Task JoinChat(string username, string password)
         {
             try
             {
                 if (_connectedUsers.Any(x => x.Value.Username.Equals(username, StringComparison.OrdinalIgnoreCase)))
                 {
                     await Clients.Caller.SendAsync("ErrorMessage", "Username already taken!");
+                    Context.Abort();
                     return;
+                }
+
+                var existingUser = await _supabase.From<User>()
+                    .Where(u => u.Username == username)
+                    .Single();
+
+                int userId;
+                if (existingUser != null)
+                {
+                    if (existingUser.Password != password)
+                    {
+                        await Clients.Caller.SendAsync("ErrorMessage", "Invalid password!");
+                        Context.Abort();
+                        return;
+                    }
+                    userId = existingUser.Id;
+                    _userIdMap[username] = userId;
+                }
+                else
+                {
+                    var newUser = new User
+                    {
+                        Username = username,
+                        Password = password,
+                        Created_At = DateTime.Now,
+                        Is_Online = true
+                    };
+                    
+                    var result = await _supabase.From<User>().Insert(newUser);
+                    var insertedUser = result.Models.First();
+                    userId = insertedUser.Id;
+                    _userIdMap[username] = userId;
                 }
 
                 var userInfo = new UserInfo
@@ -178,7 +211,6 @@ namespace Chat.Server.Hubs
                 };
 
                 _connectedUsers[Context.ConnectionId] = userInfo;
-                var userId = await GetOrCreateUserId(username);
 
                 var messages = await _supabase.From<Message>()
                     .Where(m => m.Sender_Id != null)

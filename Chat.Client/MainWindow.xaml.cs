@@ -26,13 +26,21 @@ namespace Chat.Client
         private async void ConnectButton_Click(object sender, RoutedEventArgs e)
         {
             string username = UsernameInput.Text.Trim();
+            string password = PasswordInput.Password;
+            
             if (string.IsNullOrEmpty(username))
             {
                 MessageBox.Show("Please enter a username");
                 return;
             }
+            
+            if (string.IsNullOrEmpty(password))
+            {
+                MessageBox.Show("Please enter a password");
+                return;
+            }
 
-            bool success = await chatService.ConnectAsync(username);
+            bool success = await chatService.ConnectAsync(username, password);
             if (success)
             {
                 LoginPanel.Visibility = Visibility.Collapsed;

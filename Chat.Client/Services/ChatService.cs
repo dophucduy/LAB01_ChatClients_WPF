@@ -18,7 +18,7 @@ namespace Chat.Client.Services
         public string CurrentUsername { get; private set; }
         private Dictionary<int, Dictionary<string, int>> _messageReactions = new();
 
-        public async Task<bool> ConnectAsync(string username)
+        public async Task<bool> ConnectAsync(string username, string password)
         {
             try
             {
@@ -56,7 +56,7 @@ namespace Chat.Client.Services
                 await connection.StartAsync();
                 CurrentUsername = username;
 
-                await connection.SendAsync("JoinChat", username);
+                await connection.SendAsync("JoinChat", username, password);
                 return true;
             }
             catch (Exception ex)

@@ -18,15 +18,22 @@
                            Foreground="#333" Margin="0,0,0,15"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                     <TextBlock Text="Username:" VerticalAlignment="Center" 
-                               Margin="0,0,10,0" FontSize="14"/>
+                               Margin="0,0,10,0" FontSize="14" Width="80"/>
                     <TextBox x:Name="UsernameInput" Width="200" Height="30" 
                              FontSize="14" Padding="5" Text="User1"/>
-                    <Button x:Name="ConnectButton" Content="Connect" 
-                            Click="ConnectButton_Click" 
-                            Background="#007acc" Foreground="White"
-                            Padding="15,5" Margin="10,0" 
-                            BorderThickness="0" Cursor="Hand"/>
                 </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0">
+                    <TextBlock Text="Password:" VerticalAlignment="Center" 
+                               Margin="0,0,10,0" FontSize="14" Width="80"/>
+                    <PasswordBox x:Name="PasswordInput" Width="200" Height="30" 
+                                 FontSize="14" Padding="5"/>
+                </StackPanel>
+                <Button x:Name="ConnectButton" Content="Connect" 
+                        Click="ConnectButton_Click" 
+                        Background="#007acc" Foreground="White"
+                        Padding="15,5" Margin="0,15,0,0" 
+                        HorizontalAlignment="Center"
+                        BorderThickness="0" Cursor="Hand"/>
             </StackPanel>
         </Border>
 
