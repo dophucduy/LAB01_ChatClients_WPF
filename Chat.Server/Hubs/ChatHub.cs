@@ -42,7 +42,8 @@ namespace Chat.Server.Hubs
                     User = user,
                     Content = insertedMessage.Content,
                     Timestamp = insertedMessage.Timestamp,
-                    Is_System = false
+                    Is_System = false,
+                    Is_Private = false
                 };
 
                 await Clients.All.SendAsync("ReceiveMessage", messageDto);
@@ -50,6 +51,51 @@ namespace Chat.Server.Hubs
             catch (Exception ex)
             {
                 Console.WriteLine($"Error sending message: {ex.Message}");
+            }
+        }
+
+        public async Task SendPrivateMessage(string sender, string recipient, string message)
+        {
+            try
+            {
+                var senderId = await GetOrCreateUserId(sender);
+                var recipientId = await GetOrCreateUserId(recipient);
+                
+                var chatMessage = new Message
+                {
+                    Sender_Id = senderId,
+                    Receiver_Id = recipientId,
+                    Content = message,
+                    Timestamp = DateTime.Now,
+                    Is_Private = true
+                };
+
+                var result = await _supabase.From<Message>().Insert(chatMessage);
+                var insertedMessage = result.Models.First();
+                
+                var messageDto = new MessageDto
+                {
+                    Id = insertedMessage.Id,
+                    User = sender,
+                    Content = insertedMessage.Content,
+                    Timestamp = insertedMessage.Timestamp,
+                    Is_System = false,
+                    Is_Private = true,
+                    Recipient = recipient
+                };
+
+                // Send to both sender and recipient
+                var senderConnection = _connectedUsers.FirstOrDefault(x => x.Value.Username == sender).Key;
+                var recipientConnection = _connectedUsers.FirstOrDefault(x => x.Value.Username == recipient).Key;
+                
+                if (senderConnection != null)
+                    await Clients.Client(senderConnection).SendAsync("ReceiveMessage", messageDto);
+                if (recipientConnection != null)
+                    await Clients.Client(recipientConnection).SendAsync("ReceiveMessage", messageDto);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error sending private message: {ex.Message}");
             }
         }
 
@@ -132,6 +178,7 @@ namespace Chat.Server.Hubs
                 };
 
                 _connectedUsers[Context.ConnectionId] = userInfo;
+                var userId = await GetOrCreateUserId(username);
 
                 var messages = await _supabase.From<Message>()
                     .Where(m => m.Sender_Id != null)
@@ -139,7 +186,9 @@ namespace Chat.Server.Hubs
                     .Limit(50)
                     .Get();
 
-                var messageList = messages.Models.ToList();
+                var messageList = messages.Models
+                    .Where(m => !m.Is_Private || m.Sender_Id == userId || m.Receiver_Id == userId)
+                    .ToList();
                 messageList.Reverse();
                 
                 foreach (var msg in messageList)
@@ -154,8 +203,17 @@ namespace Chat.Server.Hubs
                         User = sender?.Username ?? "Unknown",
                         Content = msg.Content,
                         Timestamp = msg.Timestamp,
-                        Is_System = false
+                        Is_System = false,
+                        Is_Private = msg.Is_Private
                     };
+                    
+                    if (msg.Is_Private && msg.Receiver_Id.HasValue)
+                    {
+                        var receiver = await _supabase.From<User>()
+                            .Where(u => u.Id == msg.Receiver_Id.Value)
+                            .Single();
+                        messageDto.Recipient = receiver?.Username;
+                    }
                     
                     await Clients.Caller.SendAsync("ReceiveMessage", messageDto);
                 }

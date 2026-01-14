@@ -45,7 +45,19 @@ namespace Chat.Client
         {
             if (!string.IsNullOrWhiteSpace(MessageInput.Text))
             {
-                await chatService.SendMessage(MessageInput.Text);
+                var selectedItem = RecipientComboBox.SelectedItem as ComboBoxItem;
+                if (selectedItem?.Content.ToString() == "Everyone (Public)")
+                {
+                    await chatService.SendMessage(MessageInput.Text);
+                }
+                else
+                {
+                    string recipient = selectedItem?.Content.ToString();
+                    if (!string.IsNullOrEmpty(recipient))
+                    {
+                        await chatService.SendPrivateMessage(recipient, MessageInput.Text);
+                    }
+                }
                 MessageInput.Clear();
             }
         }
@@ -105,8 +117,19 @@ namespace Chat.Client
                         isSystem = isSystemElement.GetBoolean();
                     }
 
+                    bool isPrivate = false;
+                    if (messageElement.TryGetProperty("is_Private", out var isPrivateElement))
+                    {
+                        isPrivate = isPrivateElement.GetBoolean();
+                    }
 
-                    AddChatMessage(id, user, content, timestamp, isSystem);
+                    string recipient = null;
+                    if (messageElement.TryGetProperty("recipient", out var recipientElement))
+                    {
+                        recipient = recipientElement.GetString();
+                    }
+
+                    AddChatMessage(id, user, content, timestamp, isSystem, isPrivate, recipient);
                 }
                 catch (Exception ex)
                 {
@@ -116,25 +139,28 @@ namespace Chat.Client
         }
 
 
-        private void AddChatMessage(int messageId, string user, string content, DateTime timestamp, bool isSystem = false)
+        private void AddChatMessage(int messageId, string user, string content, DateTime timestamp, bool isSystem = false, bool isPrivate = false, string recipient = null)
         {
             var messageBorder = new Border
             {
-                BorderBrush = Brushes.LightGray,
+                BorderBrush = isPrivate ? Brushes.Purple : Brushes.LightGray,
                 BorderThickness = new Thickness(0, 0, 0, 1),
                 Padding = new Thickness(5),
                 Margin = new Thickness(0, 2, 0, 2),
-                Tag = messageId // Store message ID for reactions
+                Background = isPrivate ? new SolidColorBrush(Color.FromRgb(250, 240, 255)) : Brushes.White,
+                Tag = messageId
             };
 
             var messageStack = new StackPanel();
 
             // Message header
+            string headerPrefix = isPrivate ? "🔒 [PRIVATE] " : "";
+            string recipientInfo = isPrivate && !string.IsNullOrEmpty(recipient) ? $" → {recipient}" : "";
             var headerText = new TextBlock
             {
-                Text = $"[{timestamp:HH:mm:ss}] {user}:",
+                Text = $"{headerPrefix}[{timestamp:HH:mm:ss}] {user}{recipientInfo}:",
                 FontWeight = isSystem ? FontWeights.Bold : FontWeights.Normal,
-                Foreground = isSystem ? Brushes.Blue : Brushes.Black
+                Foreground = isPrivate ? Brushes.Purple : (isSystem ? Brushes.Blue : Brushes.Black)
             };
 
             // Message content
@@ -270,6 +296,17 @@ namespace Chat.Client
             Dispatcher.Invoke(() =>
             {
                 UserList.ItemsSource = users;
+                
+                // Update recipient combo box
+                RecipientComboBox.Items.Clear();
+                RecipientComboBox.Items.Add(new ComboBoxItem { Content = "Everyone (Public)", IsSelected = true });
+                foreach (var user in users)
+                {
+                    if (user != chatService.CurrentUsername)
+                    {
+                        RecipientComboBox.Items.Add(new ComboBoxItem { Content = user });
+                    }
+                }
             });
         }
 

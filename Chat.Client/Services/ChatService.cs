@@ -74,6 +74,14 @@ namespace Chat.Client.Services
             }
         }
 
+        public async Task SendPrivateMessage(string recipient, string message)
+        {
+            if (connection != null && connection.State == HubConnectionState.Connected)
+            {
+                await connection.SendAsync("SendPrivateMessage", CurrentUsername, recipient, message);
+            }
+        }
+
         public async Task ReactToMessage(int messageId, string reactionType)
         {
             if (connection != null && connection.State == HubConnectionState.Connected)
