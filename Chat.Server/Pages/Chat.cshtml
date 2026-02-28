@@ -1,0 +1,125 @@
+@page
+@{
+    ViewData["Title"] = "Chat - Internal Chat";
+    var username = User.Identity?.Name ?? "Unknown";
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>@ViewData["Title"]</title>
+    <link rel="stylesheet" href="/css/chat.css"/>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+</head>
+<body>
+    <!-- Auth guard: redirect if not logged in -->
+    @if (!User.Identity?.IsAuthenticated ?? true)
+    {
+        <script>window.location.href = '/Login';</script>
+    }
+
+    <div class="chat-app" id="chatApp">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="user-avatar">@username[0].ToString().ToUpper()</div>
+                <div class="user-info">
+                    <h3>@username</h3>
+                    <span class="status-badge">● Online</span>
+                </div>
+            </div>
+            <div class="sidebar-section">
+                <h4>👥 Online Users</h4>
+                <ul id="userList" class="user-list"></ul>
+            </div>
+            <div class="sidebar-section">
+                <label for="recipientSelect" class="recipient-label">Send to:</label>
+                <select id="recipientSelect" class="recipient-select">
+                    <option value="">Everyone (Public)</option>
+                </select>
+            </div>
+            <div class="sidebar-footer">
+                <a href="/api/auth/logout" class="btn-disconnect">🔌 Disconnect</a>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-main">
+            <div class="chat-header">
+                <h2>💬 Internal Chat</h2>
+                <span id="connectionStatus" class="connection-status connecting">Connecting...</span>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                <!-- Messages will be inserted here -->
+            </div>
+
+            <!-- Image Preview Bar -->
+            <div id="imagePreviewBar" class="image-preview-bar" style="display:none;">
+                <div id="imagePreviewContent" class="image-preview-content"></div>
+            </div>
+
+            <!-- Upload Progress -->
+            <div id="uploadProgress" class="upload-progress" style="display:none;">
+                <div class="upload-info">
+                    <span id="uploadFileName">Uploading...</span>
+                    <span id="uploadPercent">0%</span>
+                </div>
+                <div class="progress-bar-track">
+                    <div id="progressBarFill" class="progress-bar-fill"></div>
+                </div>
+            </div>
+
+            <!-- Message Input -->
+            <div class="chat-input-area">
+                <button class="btn-attach" id="attachBtn" title="Attach file">📎</button>
+                <input type="file" id="fileInput" style="display:none;" multiple/>
+                <div class="input-wrapper">
+                    <textarea id="messageInput" placeholder="Type a message..." rows="1"></textarea>
+                </div>
+                <button class="btn-emoji" id="emojiBtn" title="Emoji">😊</button>
+                <button class="btn-send" id="sendBtn" title="Send">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Emoji Picker -->
+            <div id="emojiPicker" class="emoji-picker" style="display:none;">
+                <div class="emoji-picker-header">
+                    <span>Emoji</span>
+                    <button id="emojiClose" class="emoji-close">✕</button>
+                </div>
+                <div class="emoji-search">
+                    <input type="text" id="emojiSearch" placeholder="Search emoji..."/>
+                </div>
+                <div class="emoji-categories">
+                    <button class="emoji-cat-btn active" data-cat="smileys">😊</button>
+                    <button class="emoji-cat-btn" data-cat="gestures">👋</button>
+                    <button class="emoji-cat-btn" data-cat="hearts">❤️</button>
+                    <button class="emoji-cat-btn" data-cat="animals">🐱</button>
+                    <button class="emoji-cat-btn" data-cat="food">🍕</button>
+                    <button class="emoji-cat-btn" data-cat="objects">⚽</button>
+                </div>
+                <div class="emoji-grid" id="emojiGrid"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Image Lightbox Modal -->
+    <div id="lightboxModal" class="lightbox-modal" style="display:none;" onclick="closeLightbox()">
+        <div class="lightbox-content" onclick="event.stopPropagation()">
+            <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+            <img id="lightboxImage" src="" alt="Preview"/>
+        </div>
+    </div>
+
+    <script>
+        const currentUser = "@username";
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+    <script src="/js/chat.js"></script>
+</body>
+</html>

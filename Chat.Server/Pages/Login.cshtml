@@ -1,0 +1,75 @@
+@page
+@{
+    ViewData["Title"] = "Login - Internal Chat";
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>@ViewData["Title"]</title>
+    <link rel="stylesheet" href="/css/auth.css"/>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="auth-logo">💬</div>
+                <h1>Internal Chat</h1>
+                <p>Sign in to start chatting</p>
+            </div>
+            <div id="error-message" class="error-message" style="display:none;"></div>
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" placeholder="Enter your username" required autocomplete="username"/>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" placeholder="Enter your password" required autocomplete="current-password"/>
+                </div>
+                <button type="submit" class="btn-primary" id="loginBtn">
+                    <span class="btn-text">Sign In</span>
+                    <span class="btn-loader" style="display:none;">⏳</span>
+                </button>
+            </form>
+            <div class="auth-footer">
+                <p>Don't have an account? <a href="/Register">Create one</a></p>
+            </div>
+        </div>
+    </div>
+    <script>
+        async function handleLogin(e) {
+            e.preventDefault();
+            const btn = document.getElementById('loginBtn');
+            const errorDiv = document.getElementById('error-message');
+            btn.querySelector('.btn-text').style.display = 'none';
+            btn.querySelector('.btn-loader').style.display = 'inline';
+            btn.disabled = true;
+            errorDiv.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('username', document.getElementById('username').value);
+            formData.append('password', document.getElementById('password').value);
+
+            try {
+                const res = await fetch('/api/auth/login', { method: 'POST', body: formData });
+                if (res.ok) {
+                    window.location.href = '/Chat';
+                } else {
+                    const text = await res.text();
+                    errorDiv.textContent = text.replace(/"/g, '');
+                    errorDiv.style.display = 'block';
+                }
+            } catch (err) {
+                errorDiv.textContent = 'Connection failed. Is the server running?';
+                errorDiv.style.display = 'block';
+            }
+            btn.querySelector('.btn-text').style.display = 'inline';
+            btn.querySelector('.btn-loader').style.display = 'none';
+            btn.disabled = false;
+        }
+    </script>
+</body>
+</html>
