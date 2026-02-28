@@ -176,9 +176,13 @@ namespace Chat.Server.Hubs
                     .Single();
 
                 int userId;
+                // Check if user is already authenticated via cookies (web client)
+                bool isWebAuthenticated = Context.User?.Identity?.IsAuthenticated ?? false;
+
                 if (existingUser != null)
                 {
-                    if (existingUser.Password != password)
+                    // Skip password check if already authenticated via web cookies
+                    if (!isWebAuthenticated && !string.IsNullOrEmpty(password) && existingUser.Password != password)
                     {
                         await Clients.Caller.SendAsync("ErrorMessage", "Invalid password!");
                         Context.Abort();

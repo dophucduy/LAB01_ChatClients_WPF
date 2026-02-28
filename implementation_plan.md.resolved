@@ -1,0 +1,198 @@
+# Lab 3: Host SignalR Chat as ASP.NET Core Web App
+
+Convert the existing WPF desktop SignalR chat client into a fully hosted ASP.NET Core web application with user authentication, Messenger-style UI, async large file transfer, emoji picker, and image preview.
+
+## Existing Codebase
+
+- **Chat.Server**: ASP.NET Core (.NET 8) backend with SignalR [ChatHub](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/Hubs/ChatHub.cs#17-21) + Supabase for persistence (users, messages, reactions)
+- **Chat.Client**: WPF desktop client (will remain untouched — we add a new web project alongside it)
+
+## User Review Required
+
+> [!IMPORTANT]
+> A new project `Chat.Web` will be added to the existing solution. The existing `Chat.Server` and `Chat.Client` projects will **not** be modified. The web app will reuse the same `Chat.Server` backend (SignalR hub + Supabase).
+
+> [!IMPORTANT]
+> Authentication will use **ASP.NET Core Cookie Authentication** integrated with the existing Supabase `users` table (username/password). This keeps things consistent with the existing [JoinChat](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/Hubs/ChatHub.cs#163-270) flow.
+
+> [!WARNING]
+> Large file upload (>=1GB) uses chunked upload via a dedicated API endpoint with streaming (`IFormFile` disabled in favor of `Request.Body` streaming). Files are stored on disk in `wwwroot/uploads/`.
+
+## Proposed Changes
+
+### Git Branch
+
+Create branch `lab3-webapp` from `master`.
+
+---
+
+### Chat.Server (Backend Modifications)
+
+#### [MODIFY] [Program.cs](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/Program.cs)
+
+- Add CORS policy to allow the web client to connect
+- Add cookie authentication middleware
+- Add static file serving for uploaded files
+- Add a file upload API endpoint (`/api/upload`) that accepts chunked streaming for large files (>=1GB)
+- Add an auth API endpoint (`/api/auth/login` and `/api/auth/register`) using Supabase `users` table
+- Configure SignalR for large message sizes (file metadata)
+
+#### [MODIFY] [ChatHub.cs](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/Hubs/ChatHub.cs)
+
+- Add `[Authorize]` attribute to require authentication
+- Add method `SendFileMessage(string user, string fileName, string fileUrl, long fileSize)` for file sharing
+- Update [JoinChat](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/Hubs/ChatHub.cs#163-270) to work with authenticated context (read username from cookie claims)
+
+#### [NEW] [FileMessage.cs](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/Models/FileMessage.cs)
+
+- Model for file message metadata (fileName, fileUrl, fileSize, uploadProgress)
+
+---
+
+### Chat.Web (New Razor Pages Web Client)
+
+#### [NEW] [Chat.Web.csproj](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Web/Chat.Web.csproj)
+
+- ASP.NET Core Web App (.NET 8) with Razor Pages
+- SignalR JavaScript client (via `libman` or CDN)
+
+#### [NEW] [Program.cs](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Web/Program.cs)
+
+- Configure Razor Pages + cookie authentication
+- Proxy or redirect to Chat.Server for SignalR
+
+> [!NOTE]
+> **Revised approach**: Instead of creating a separate `Chat.Web` project, the web frontend will be **hosted directly from `Chat.Server`**. This avoids CORS complexity and keeps SignalR + authentication in one process. Razor Pages will be added to `Chat.Server` directly.
+
+---
+
+### Revised Architecture: Single Project (Chat.Server hosts everything)
+
+#### [MODIFY] [Chat.Server.csproj](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/Chat.Server.csproj)
+
+- Add `Microsoft.AspNetCore.Authentication.Cookies` package
+- Add Razor Pages support
+
+#### [MODIFY] [Program.cs](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/Program.cs)
+
+- Add cookie authentication services
+- Add Razor Pages services
+- Add static files middleware
+- Add antiforgery middleware
+- Map Razor Pages + fallback
+- Add file upload endpoint `/api/upload` (streaming, chunked)
+- Configure SignalR for large payloads
+- Configure Kestrel for large request body (>=1GB)
+
+#### [NEW] [Pages/_ViewImports.cshtml](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/Pages/_ViewImports.cshtml)
+
+- Standard Razor Pages imports
+
+#### [NEW] [Pages/Login.cshtml + Login.cshtml.cs](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/Pages/Login.cshtml)
+
+- Login page with username/password form
+- Validates against Supabase `users` table
+- Creates authentication cookie on success
+- Register option (creates new user in Supabase)
+
+#### [NEW] [Pages/Register.cshtml + Register.cshtml.cs](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/Pages/Register.cshtml)
+
+- Registration page with username/password form
+- Creates user in Supabase
+
+#### [NEW] [Pages/Chat.cshtml](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/Pages/Chat.cshtml)
+
+- **Messenger-style chat UI** with the following features:
+
+**Layout:**
+- Left sidebar: online users list, user info, disconnect button
+- Main area: chat messages with Messenger-style bubbles
+  - Incoming messages aligned **left** (grey bubbles)
+  - Outgoing messages aligned **right** (blue bubbles)
+  - Timestamps, sender names, private message indicators
+- Bottom: message input area with recipient selector, emoji button, file attach button
+
+**Emoji Picker:**
+- Emoji button opens a floating panel with categorized emoji grid
+- Clicking an emoji inserts it into the message input
+- Common emojis: 😊😂❤️👍🔥😭🎉💯🙏😎 etc.
+
+**Image Preview:**
+- When an image file is shared, it renders as an inline thumbnail in the chat bubble
+- Clicking the thumbnail opens the full image in a modal/lightbox
+- Drag-and-drop images into the textbox
+
+**Large File Upload:**
+- File attach button opens file picker (any file type)
+- Files are uploaded via chunked streaming to `/api/upload`
+- Progress bar shown during upload
+- On completion, a file message is broadcast via SignalR
+- Download link appears in chat for recipients
+
+#### [NEW] [wwwroot/css/chat.css](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/wwwroot/css/chat.css)
+
+- Messenger-style CSS: chat bubbles, left/right alignment, emoji panel, file upload progress, responsive layout
+- Premium dark/light theme with gradients and micro-animations
+
+#### [NEW] [wwwroot/js/chat.js](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/wwwroot/js/chat.js)
+
+- SignalR JavaScript client connection
+- Message rendering (left/right bubble alignment based on sender)
+- Emoji picker toggle and insertion
+- File upload with chunked `fetch()` and progress tracking
+- Image preview rendering in chat bubbles
+- Auto-scroll, notifications, recipient selection
+
+#### [NEW] [wwwroot/uploads/](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/wwwroot/uploads/)
+
+- Directory for uploaded files (created at runtime)
+
+---
+
+### Solution File
+
+#### [MODIFY] [LAB01_ChatClients_WPF.sln](file:///d:/Code/LAB01_ChatClients_WPF/LAB01_ChatClients_WPF.sln)
+
+- No changes needed since we're modifying `Chat.Server` directly
+
+---
+
+## MessageDto Extension
+
+#### [MODIFY] [MessageDto.cs](file:///d:/Code/LAB01_ChatClients_WPF/Chat.Server/Models/MessageDto.cs)
+
+- Add optional fields: `FileName`, `FileUrl`, `FileSize`, `IsFile` for file messages
+
+---
+
+## Verification Plan
+
+### Automated Tests
+
+1. **Build verification**:
+   ```powershell
+   cd d:\Code\LAB01_ChatClients_WPF\Chat.Server
+   dotnet build
+   ```
+
+2. **Run the server**:
+   ```powershell
+   cd d:\Code\LAB01_ChatClients_WPF\Chat.Server
+   dotnet run
+   ```
+
+### Browser Testing (using browser tool)
+
+1. Navigate to `http://localhost:5000/Login` → Verify login page renders
+2. Register a new user → Verify redirect to chat page
+3. Open a second browser tab, register another user
+4. Send a message → Verify it appears with Messenger-style bubbles (sender right, receiver left)
+5. Test emoji picker → Verify emojis insert into message input
+6. Attach an image → Verify inline preview in chat
+7. Test file upload progress bar
+8. Verify authentication → Accessing `/Chat` without login should redirect to `/Login`
+
+### Manual Verification
+
+- The user should test from two different browser windows to verify real-time messaging works correctly
+- Test large file upload with a file >=1GB to ensure chunked streaming works

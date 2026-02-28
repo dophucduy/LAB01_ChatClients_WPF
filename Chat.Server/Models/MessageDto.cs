@@ -9,5 +9,11 @@ namespace Chat.Server.Models
         public bool Is_System { get; set; }
         public bool Is_Private { get; set; }
         public string Recipient { get; set; }
+        
+        // File message properties
+        public bool IsFile { get; set; }
+        public string? FileName { get; set; }
+        public string? FileUrl { get; set; }
+        public long FileSize { get; set; }
     }
 }
