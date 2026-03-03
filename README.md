@@ -1,6 +1,6 @@
-# Chat.Server
+# ChatClients
 
-A real-time messaging application with a modern web-based chat interface and a WPF desktop client. Built for LAB01 assignment.
+A local-area-network(LAN) real-time messaging application with a modern web-based chat interface and a WPF desktop client. Built for LAB01 assignment.
 
 ## 📌 Purpose
 
